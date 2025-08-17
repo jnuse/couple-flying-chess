@@ -63,32 +63,22 @@ jobs:
             exit 1
           fi
 
-      # 6. ✨ 智能魔法第二重 (加强版)：让所有 API 路由兼容静态导出 ✨
-      - name: Make API routes compatible with static export
+      # 6. ✨ 终极魔法：自动静态化所有动态路由 ✨
+      #    这个脚本会查找所有需要处理的路由文件并自动添加配置
+      - name: Make all dynamic routes compatible with static export
         run: |
-          # --- 处理 sitemap ---
-          sitemap_route_file=$(find ./app/api/sitemap -name "route.*" | head -n 1)
-          if [ -f "$sitemap_route_file" ]; then
-            echo "Found sitemap route file: $sitemap_route_file"
-            sed -i '1i export const dynamic = "force-static";' "$sitemap_route_file"
-            echo "--- Modified $sitemap_route_file for deployment ---"
-            cat "$sitemap_route_file"
-          else
-            echo "Sitemap route file not found, skipping."
-          fi
-          
-          # --- 新增：处理 robots.txt ---
-          robots_route_file=$(find ./app -path "*/robots.txt/route.*" | head -n 1)
-          if [ -f "$robots_route_file" ]; then
-            echo "Found robots.txt route file: $robots_route_file"
-            sed -i '1i export const dynamic = "force-static";' "$robots_route_file"
-            echo "--- Modified $robots_route_file for deployment ---"
-            cat "$robots_route_file"
-          else
-            echo "Robots.txt route file not found, skipping."
-          fi
+          echo "Searching for route files to make static..."
+          find ./app -type f \( -name "route.ts" -o -name "route.js" -o -name "sitemap.ts" -o -name "sitemap.js" -o -name "robots.ts" -o -name "robots.js" \) | while read -r file; do
+            if [ -f "$file" ]; then
+              echo "--- Modifying $file ---"
+              # 在文件第一行插入 'export const dynamic = "force-static";'
+              sed -i '1i export const dynamic = "force-static";' "$file"
+              cat "$file"
+              echo "-------------------------"
+            fi
+          done
 
-      # 7. 构建静态站点
+      # 7. 构建静态站点 (这次，我们将见证成功！)
       - name: Build static site
         run: pnpm build
 
