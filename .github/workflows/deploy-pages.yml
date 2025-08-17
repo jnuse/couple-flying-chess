@@ -3,21 +3,17 @@
 name: Deploy to GitHub Pages
 
 on:
-  # 当推送到 main 或 master 分支时触发
   push:
     branches:
       - main
       - master
-  # 允许手动触发
   workflow_dispatch:
 
-# 权限设置：允许 Workflow 写入 GitHub Pages 所需的内容
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# 并发控制：确保同一时间只有一个部署任务在运行
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -34,21 +30,20 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: latest # 使用最新版的 pnpm
+          version: latest
 
-      # 3. 设置 Node.js 环境 (与你的 Dockerfile 保持一致)
+      # 3. 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm' # 为 pnpm 启用缓存，加速安装
+          cache: 'pnpm'
 
       # 4. 安装项目依赖
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       # 5. ✨ 智能魔法第一重：自动查找并修改 Next.js 配置 ✨
-      #    这个脚本会先找 next.config.mjs，再找 next.config.js，非常可靠
       - name: Intelligently modify Next.js config for static export
         run: |
           CONFIG_FILE=""
@@ -60,7 +55,6 @@ jobs:
 
           if [ -n "$CONFIG_FILE" ]; then
             echo "Found Next.js config file: $CONFIG_FILE"
-            # 将 output: "standalone" 替换为 output: "export"
             sed -i 's/output: "standalone"/output: "export"/' "$CONFIG_FILE"
             echo "--- Modified $CONFIG_FILE for deployment ---"
             cat "$CONFIG_FILE"
@@ -69,22 +63,32 @@ jobs:
             exit 1
           fi
 
-      # 6. ✨ 智能魔法第二重：让 API 路由兼容静态导出 ✨
-      #    这个脚本会自动给 sitemap 路由文件添加必要的配置
+      # 6. ✨ 智能魔法第二重 (加强版)：让所有 API 路由兼容静态导出 ✨
       - name: Make API routes compatible with static export
         run: |
+          # --- 处理 sitemap ---
           sitemap_route_file=$(find ./app/api/sitemap -name "route.*" | head -n 1)
           if [ -f "$sitemap_route_file" ]; then
             echo "Found sitemap route file: $sitemap_route_file"
-            # 在文件第一行插入 'export const dynamic = "force-static";'
             sed -i '1i export const dynamic = "force-static";' "$sitemap_route_file"
             echo "--- Modified $sitemap_route_file for deployment ---"
             cat "$sitemap_route_file"
           else
-            echo "Sitemap route file not found, skipping modification. This might be OK."
+            echo "Sitemap route file not found, skipping."
+          fi
+          
+          # --- 新增：处理 robots.txt ---
+          robots_route_file=$(find ./app -path "*/robots.txt/route.*" | head -n 1)
+          if [ -f "$robots_route_file" ]; then
+            echo "Found robots.txt route file: $robots_route_file"
+            sed -i '1i export const dynamic = "force-static";' "$robots_route_file"
+            echo "--- Modified $robots_route_file for deployment ---"
+            cat "$robots_route_file"
+          else
+            echo "Robots.txt route file not found, skipping."
           fi
 
-      # 7. 构建静态站点 (经过魔法加持，这次一定能成功！)
+      # 7. 构建静态站点
       - name: Build static site
         run: pnpm build
 
@@ -92,7 +96,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # 9. 上传构建好的静态文件 (out 文件夹)
+      # 9. 上传构建好的静态文件
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
