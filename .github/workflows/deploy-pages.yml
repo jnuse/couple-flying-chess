@@ -3,9 +3,9 @@
 name: Deploy to GitHub Pages (Static Export)
 
 on:
-  # push:
-    # branches:
-      # - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -42,14 +42,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 5. ✨ 魔法步骤：临时修改 Next.js 配置以进行静态导出 ✨
-      # 这一步会在构建开始前，向 next.config.mjs 文件中注入 output: 'export'
-      # 这不会影响你仓库里的原始文件！
+      # 5. ✨ 魔法升级：直接替换 output 配置为 'export' ✨
       - name: Modify next.config.mjs for static export
         run: |
-          # 使用 sed 命令在文件的最后一个 '}' 之前插入静态导出配置
-          # 这样做可以兼容大部分 next.config.mjs 的写法
-          sed -i "/^};/i \  output: 'export',\n  images: { unoptimized: true }," next.config.mjs
+          # 使用 sed 的替换功能 (s/find/replace/)
+          # 将 'output: "standalone"' 替换为 'output: "export"'
+          sed -i 's/output: "standalone"/output: "export"/' next.config.mjs
+          
           echo "--- Modified next.config.mjs for build ---"
           cat next.config.mjs
           echo "------------------------------------------"
