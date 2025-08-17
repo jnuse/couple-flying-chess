@@ -1,51 +1,90 @@
 # .github/workflows/deploy-pages.yml
 
-name: Deploy to GitHub Pages (Static Export)
+name: Deploy to GitHub Pages
 
 on:
+  # 当推送到 main 或 master 分支时触发
   push:
     branches:
       - main
+      - master
+  # 允许手动触发
   workflow_dispatch:
 
+# 权限设置：允许 Workflow 写入 GitHub Pages 所需的内容
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# 并发控制：确保同一时间只有一个部署任务在运行
 concurrency:
   group: "pages"
   cancel-in-progress: true
-
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # ... (前面 1-4 步不变) ...
+      # 1. 拉取你的仓库代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 5. ✨ 魔法第一重：修改 next.config.mjs ✨
-      - name: Modify next.config.mjs for static export
-        run: |
-          sed -i 's/output: "standalone"/output: "export"/' next.config.mjs
-          echo "--- Modified next.config.mjs ---"
-          cat next.config.mjs
+      # 2. 设置 pnpm 环境
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: latest # 使用最新版的 pnpm
 
-      # 6. ✨ 魔法第二重：让 API 路由兼容静态导出 ✨
-      - name: Make API routes compatible with static export
+      # 3. 设置 Node.js 环境 (与你的 Dockerfile 保持一致)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm' # 为 pnpm 启用缓存，加速安装
+
+      # 4. 安装项目依赖
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. ✨ 智能魔法第一重：自动查找并修改 Next.js 配置 ✨
+      #    这个脚本会先找 next.config.mjs，再找 next.config.js，非常可靠
+      - name: Intelligently modify Next.js config for static export
         run: |
-          # 找到 sitemap 路由文件 (无论是 .js 还是 .ts)
-          sitemap_route_file=$(find ./app/api/sitemap -name "route.*")
-          if [ -f "$sitemap_route_file" ]; then
-            # 在文件第一行插入 'export const dynamic = "force-static";'
-            sed -i '1i export const dynamic = "force-static";' "$sitemap_route_file"
-            echo "--- Modified $sitemap_route_file ---"
-            cat "$sitemap_route_file"
-          else
-            echo "Sitemap route file not found, skipping modification."
+          CONFIG_FILE=""
+          if [ -f "next.config.mjs" ]; then
+            CONFIG_FILE="next.config.mjs"
+          elif [ -f "next.config.js" ]; then
+            CONFIG_FILE="next.config.js"
           fi
 
-      # 7. 构建静态站点 (现在应该能成功了！)
+          if [ -n "$CONFIG_FILE" ]; then
+            echo "Found Next.js config file: $CONFIG_FILE"
+            # 将 output: "standalone" 替换为 output: "export"
+            sed -i 's/output: "standalone"/output: "export"/' "$CONFIG_FILE"
+            echo "--- Modified $CONFIG_FILE for deployment ---"
+            cat "$CONFIG_FILE"
+          else
+            echo "Error: Could not find next.config.mjs or next.config.js"
+            exit 1
+          fi
+
+      # 6. ✨ 智能魔法第二重：让 API 路由兼容静态导出 ✨
+      #    这个脚本会自动给 sitemap 路由文件添加必要的配置
+      - name: Make API routes compatible with static export
+        run: |
+          sitemap_route_file=$(find ./app/api/sitemap -name "route.*" | head -n 1)
+          if [ -f "$sitemap_route_file" ]; then
+            echo "Found sitemap route file: $sitemap_route_file"
+            # 在文件第一行插入 'export const dynamic = "force-static";'
+            sed -i '1i export const dynamic = "force-static";' "$sitemap_route_file"
+            echo "--- Modified $sitemap_route_file for deployment ---"
+            cat "$sitemap_route_file"
+          else
+            echo "Sitemap route file not found, skipping modification. This might be OK."
+          fi
+
+      # 7. 构建静态站点 (经过魔法加持，这次一定能成功！)
       - name: Build static site
         run: pnpm build
 
@@ -53,7 +92,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # 9. 上传构建产物
+      # 9. 上传构建好的静态文件 (out 文件夹)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
