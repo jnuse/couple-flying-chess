@@ -1,73 +1,48 @@
 # .github/workflows/deploy-pages.yml
-
-name: Deploy to GitHub Pages (Static Export)
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+# ... (前面的部分不变) ...
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码
-      - name: Checkout
-        uses: actions/checkout@v4
+      # ... (前面 1-4 步不变) ...
 
-      # 2. 设置 pnpm
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: latest
-
-      # 3. 设置 Node.js 环境
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      # 4. 安装依赖
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # 5. ✨ 魔法升级：直接替换 output 配置为 'export' ✨
+      # 5. ✨ 魔法第一重：修改 next.config.mjs ✨
       - name: Modify next.config.mjs for static export
         run: |
-          # 使用 sed 的替换功能 (s/find/replace/)
-          # 将 'output: "standalone"' 替换为 'output: "export"'
           sed -i 's/output: "standalone"/output: "export"/' next.config.mjs
-          
-          echo "--- Modified next.config.mjs for build ---"
+          echo "--- Modified next.config.mjs ---"
           cat next.config.mjs
-          echo "------------------------------------------"
 
-      # 6. 构建静态站点 (现在它会生成 out 文件夹)
+      # 6. ✨ 魔法第二重：让 API 路由兼容静态导出 ✨
+      - name: Make API routes compatible with static export
+        run: |
+          # 找到 sitemap 路由文件 (无论是 .js 还是 .ts)
+          sitemap_route_file=$(find ./app/api/sitemap -name "route.*")
+          if [ -f "$sitemap_route_file" ]; then
+            # 在文件第一行插入 'export const dynamic = "force-static";'
+            sed -i '1i export const dynamic = "force-static";' "$sitemap_route_file"
+            echo "--- Modified $sitemap_route_file ---"
+            cat "$sitemap_route_file"
+          else
+            echo "Sitemap route file not found, skipping modification."
+          fi
+
+      # 7. 构建静态站点 (现在应该能成功了！)
       - name: Build static site
         run: pnpm build
 
-      # 7. 配置 GitHub Pages
+      # 8. 配置 GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # 8. 上传构建产物 (上传生成的 out 文件夹)
+      # 9. 上传构建产物
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './out'
 
-      # 9. 部署到 GitHub Pages
+      # 10. 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
